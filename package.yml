@@ -1,0 +1,123 @@
+package: cloud.lazycat.app.hindsight
+version: 0.10.2-10
+name: Hindsight
+description: Agent 记忆系统：让 AI 智能体记住每次对话、自动沉淀长期记忆，支持 25+ 大模型供应商。
+author: vectorize-io
+license: MIT
+support_mobile: false
+unsupported_platforms:
+  - android
+  - ios
+homepage: https://github.com/vectorize-io/hindsight
+locales:
+  zh-CN:
+    name: Hindsight
+    description: Agent 记忆系统：让 AI 智能体记住每次对话、自动沉淀长期记忆，支持 25+ 大模型供应商。
+    usage: |
+      Hindsight 是开源的 Agent 长期记忆系统，为 Claude Code / Codex / Cursor 等 AI 工具提供跨会话的持久记忆。
+
+      【模型在哪里配置】
+      - 模型配置入口：懒猫微服客户端 → 本应用 → 「配置 / 重新配置」→ 部署参数页。
+        大模型（LLM）、嵌入模型（Embeddings）、重排模型（Reranker）的供应商、模型名、API Key、
+        接口地址都在那一页填写，填完保存即可，随时能改（安装时不填也能装，直接用默认值）。
+        进入控制台后，右下角也会有一条「模型配置入口」提示，指明该页在哪里（可点 ✕ 关闭）。
+      - 默认值就能用：嵌入与重排默认用内置本地模型（完全离线、不需要任何 Key）；
+        大模型默认 none（不接大模型时记忆照常写入与检索，只是不做大模型提炼）。
+      - 想接大模型：把「大模型供应商」改成 deepseek / openai / ollama 等并填 Key（ollama 本地模型可不填 Key、
+        把接口地址填成 http://127.0.0.1:11434/v1），保存后应用自动重启生效。
+      - 想用云端嵌入/重排：把对应供应商改成 openai / cohere / tei 等并填 Key。
+      - 单个记忆库还可以覆盖部分参数（重排开关、召回预算、整合批大小等）：控制台 → 选择记忆库 → 配置。
+      - 部署参数页没列出的官方变量（如 HINDSIGHT_API_AUDIT_LOG_ENABLED）填在「高级：额外官方环境变量」里。
+
+      【开始使用】
+      1. 打开应用进入 Hindsight 控制台（已开启免密访问，无需登录）
+      2. 创建一个记忆库
+      3. 在「文档」页添加文档：可直接粘贴文本，也可点“上传文件”从懒猫网盘选择文件
+      4. 导出文档时会弹出懒猫网盘目录选择，保存到你选的位置；导入 .zip 在同一个入口
+
+      【MCP 接口（给 Claude Code / Codex 等 AI 助手用的记忆通道）】
+      每个记忆库一个 MCP 地址，记忆库 ID 就是控制台里那个库的 ID：
+
+        https://hindsight.<你的微服域名>/mcp/<记忆库ID>/
+
+      接 Claude Code 的例子（在装 Claude Code 的电脑上执行）：
+
+        claude mcp add --transport http hindsight https://hindsight.<你的微服域名>/mcp/<记忆库ID>/
+
+      调用里不用再带 bank_id，端点本身就属于这个记忆库；也可以带 X-Bank-Id 请求头替换记忆库。
+      想一次访问所有记忆库，用 https://hindsight.<你的微服域名>/mcp/（多库模式，工具里带 bank_id）。
+      这个地址和管控台一样，需要在已登录的懒猫微服客户端网络里访问；平台不额外要求账号密码，
+      本应用默认也不在 MCP 端点上加口令（与「控制台默认不设访问口令」一致）。
+
+      - 移动端：本应用的管控台是桌面端布局（宽表格与图表），**移动端暂不支持**，请用桌面端或电脑浏览器打开。
+      说明：
+      - 数据保存在 /lzcapp/var 下，升级/重启不会丢失
+      - 控制台默认不设访问口令，打开即用；如需口令保护可在设置中自行配置
+  en-US:
+    name: Hindsight
+    description: >-
+      Agent memory that learns. Persistent memory for AI agents with 25+ LLM
+      providers.
+    usage: |
+      Hindsight is an open-source long-term memory system for AI agents
+      (Claude Code, Codex, Cursor, ...).
+
+      Where to configure the models:
+      - Where the models are configured: LazyCat client -> this app ->
+        "Configure / Reconfigure" -> Deploy Parameters. The LLM, the
+        Embeddings provider and the Reranker provider (provider, model name,
+        API key, base URL) are set there and can be changed at any time.
+        Installing with the defaults is fine too.
+        The console also shows a small "model configuration" notice in the
+        bottom-right corner pointing at that page (dismissible).
+      - The defaults already work: embeddings and reranking use built-in local
+        models (fully offline, no API key). The LLM defaults to "none", which
+        keeps memory write/recall working without an LLM.
+      - To use an LLM: pick deepseek / openai / ollama etc. and fill the key
+        (for a local Ollama leave the key empty and set the base URL to
+        http://127.0.0.1:11434/v1). Save and the app restarts automatically.
+      - To use cloud embeddings / reranking: switch the matching provider to
+        openai / cohere / tei etc. and fill the key.
+      - Per-bank overrides (reranking toggle, recall budgets, consolidation
+        batch size) live in the console: pick a bank -> Config.
+      - Any official env var not listed on the page can go into
+        "Advanced: extra official environment variables".
+
+      Getting started:
+      1. Open the Hindsight console (passwordless access is enabled).
+      2. Create a memory bank.
+      3. Add documents on the Documents page: paste text, or upload a file
+         picked from the LazyCat netdisk.
+      4. Exporting a bank gives you a .zip saved through the LazyCat netdisk
+         folder picker; importing uses the same entry point.
+
+      MCP server (the memory channel for Claude Code / Codex and other AI
+      agents):
+      every bank has its own MCP endpoint, where the bank ID is the ID shown
+      in the console:
+
+        https://hindsight.<your-box-domain>/mcp/<bank-id>/
+
+      Example for Claude Code (run it on the machine that has Claude Code):
+
+        claude mcp add --transport http hindsight https://hindsight.<your-box-domain>/mcp/<bank-id>/
+
+      Calls on that endpoint do not take a bank_id, because the endpoint is
+      scoped to the bank; you can also override the bank with the X-Bank-Id
+      request header. To reach all banks at once use
+      https://hindsight.<your-box-domain>/mcp/ (multi-bank mode, each tool
+      takes a bank_id).
+      Like the console, that address is reachable from inside a signed-in
+      LazyCat client network. The platform asks for no extra account and
+      password there, and this package adds no password of its own to the MCP
+      endpoint either, matching the console default.
+
+      Mobile: the control plane is a desktop layout (wide tables and
+      charts); mobile is not supported - please open it on a desktop.
+
+      Data persists under /lzcapp/var across restarts and upgrades.
+permissions:
+  required:
+    - net.internet
+  optional:
+    - document.private

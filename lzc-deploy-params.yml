@@ -1,0 +1,104 @@
+# 说明：本文件定义「部署参数」——用户安装时、或之后在客户端
+# 「应用 → 配置 / 重新配置」里填写，平台用 text/template 渲染进 manifest。
+# 全部字段都给了默认值且 optional，所以不填也能装起来（默认：嵌入/重排用内置本地模型，大模型不接）。
+params:
+  # ============ 大模型（事实提取 / 整合 / 反思 使用）============
+  - id: llm_provider
+    type: string
+    name: "大模型供应商 LLM Provider（默认 none，不接大模型）"
+    description: >
+      用于事实提取/整合/反思。可填 openai / deepseek / anthropic / gemini / groq /
+      openrouter / ollama / litellm / none。填 none 表示暂不接大模型：记忆照常写入与检索
+      （嵌入与重排用内置模型），只是不做大模型提炼。国内可用的常见选择：deepseek、
+      openai（配合中转 Base URL 即可）、ollama（本地模型）。
+    default_value: "none"
+    optional: true
+
+  - id: llm_model
+    type: string
+    name: "大模型名称 LLM Model（留空用供应商默认）"
+    description: "留空即用供应商默认模型（openai→gpt-4o-mini、deepseek→deepseek-v4-flash、ollama→按你本地拉取的模型填，如 qwen2.5:7b）"
+    default_value: ""
+    optional: true
+
+  - id: llm_api_key
+    type: secret
+    name: "大模型 API Key（本地 ollama 可留空）"
+    description: "对应所选供应商的 API Key；使用 ollama 等本地模型时留空即可"
+    default_value: ""
+    optional: true
+
+  - id: llm_base_url
+    type: string
+    name: "大模型 API 地址 Base URL（可选）"
+    description: "自建 / 中转 / Ollama 时填。例：Ollama 填 http://127.0.0.1:11434/v1；OpenAI 兼容中转填其 /v1 地址"
+    default_value: ""
+    optional: true
+
+  # ============ 嵌入模型（记忆向量化）============
+  - id: embeddings_provider
+    type: string
+    name: "嵌入模型供应商（固定 local，离线可用）"
+    description: >
+      嵌入仅使用内置本地模型（local = BAAI/bge-small-en-v1.5，完全离线、无需 Key），
+      这是唯一受支持的取值。为兼容旧版本的残留配置，其它取值（openai/tei/onnx 等）
+      会在启动时被自动回退到 built-in 本地模型并在容器日志中说明，应用不会因此
+      启动失败（云端嵌入的可用性无法在启动前可靠判定，曾导致启动报错）。
+    default_value: "local"
+    optional: true
+
+  - id: embeddings_model
+    type: string
+    name: "嵌入模型名称（默认内置离线模型 BAAI/bge-small-en-v1.5）"
+    description: >-
+      只能填镜像内置缓存里的模型（默认 BAAI/bge-small-en-v1.5，完全离线）。
+      填了缓存里没有的模型名会被自动换成内置模型并在容器日志里说明（镜像为离线模式，无法下载新模型）。
+    default_value: "BAAI/bge-small-en-v1.5"
+    optional: true
+
+  # ============ 重排模型（recall 结果重排）============
+  - id: reranker_provider
+    type: string
+    name: "重排模型供应商（默认 local，离线可用）"
+    description: >
+      local = 内置 cross-encoder/ms-marco-MiniLM-L-6-v2，完全离线、无需 Key（默认，推荐）；
+      cohere / openrouter / litellm = 调用云端重排接口（需 Key）；
+      tei = 自建 TEI 重排服务；none = 关闭重排（只用向量检索）。
+    default_value: "local"
+    optional: true
+
+  - id: reranker_model
+    type: string
+    name: "重排模型名称（默认内置离线模型 cross-encoder/ms-marco-MiniLM-L-6-v2）"
+    description: >-
+      provider=local 时只能填镜像内置缓存里的模型（默认 cross-encoder/ms-marco-MiniLM-L-6-v2，完全离线）；
+      填了缓存里没有的模型名会被自动换成内置模型并在容器日志里说明。
+      云端重排时填对应供应商的模型名。
+    default_value: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    optional: true
+
+  - id: reranker_api_key
+    type: secret
+    name: "重排模型 API Key（云端重排时填）"
+    description: "provider 为 local/tei/none 时留空"
+    default_value: ""
+    optional: true
+
+  - id: reranker_base_url
+    type: string
+    name: "重排接口地址（可选）"
+    description: "云端重排的中转地址，或 provider=tei 时的 TEI 服务地址"
+    default_value: ""
+    optional: true
+
+  # ============ 高级 ============
+  - id: extra_env
+    type: string
+    name: "高级：额外官方环境变量（可选）"
+    description: >
+      格式 KEY=VALUE;KEY2=VALUE2，用于本页未覆盖的官方变量。例：
+      HINDSIGHT_API_AUDIT_LOG_ENABLED=true（开启审计/LLM 请求追踪）；
+      HF_HUB_OFFLINE=0（允许下载新的本地模型）；HINDSIGHT_API_LOG_LEVEL=debug。
+      这些值会追加进容器环境，请只填 HINDSIGHT_/HF_/TOKENIZERS_ 等已知变量。
+    default_value: ""
+    optional: true

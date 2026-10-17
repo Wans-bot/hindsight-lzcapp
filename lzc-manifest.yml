@@ -1,0 +1,209 @@
+usage: |
+  Hindsight 是开源的 Agent 长期记忆系统，为 Claude Code / Codex / Cursor 等 AI 工具提供跨会话的持久记忆。
+
+  【模型在哪里配置】
+  - 模型配置入口：懒猫微服客户端 → 本应用 → 「配置 / 重新配置」→ 部署参数页。
+    大模型（LLM）、嵌入模型（Embeddings）、重排模型（Reranker）的供应商、模型名、API Key、接口地址都在那一页填写，
+    填完保存即可，随时能改（安装时不填也能装，直接用默认值）。
+    进入控制台后，右下角也会有一条「模型配置入口」提示，指明该页在哪里（可点 ✕ 关闭）。
+  - 默认值就能用：嵌入与重排默认用内置本地模型（完全离线、不需要任何 Key）；
+    大模型默认 none（不接大模型时记忆照常写入与检索，只是不做大模型提炼）。
+  - 想接大模型：把「大模型供应商」改成 deepseek / openai / ollama 等并填 Key（ollama 本地模型可不填 Key、
+    把接口地址填成 http://127.0.0.1:11434/v1），保存后应用自动重启生效。
+  - 想用云端嵌入/重排：把对应供应商改成 openai / cohere / tei 等并填 Key。
+  - 单个记忆库还可以覆盖部分参数（重排开关、召回预算、整合批大小等）：控制台 → 选择记忆库 → 配置。
+  - 部署参数页没列出的官方变量（如 HINDSIGHT_API_AUDIT_LOG_ENABLED）填在「高级：额外官方环境变量」里。
+
+  【开始使用】
+  1. 打开应用进入 Hindsight 控制台（已开启免密访问，无需登录）
+  2. 创建一个记忆库
+  3. 在「文档」页添加文档：可直接粘贴文本，也可点“上传文件”从懒猫网盘选择文件
+  4. 导出文档时会弹出懒猫网盘目录选择，保存到你选的位置；导入 .zip 在同一个入口
+
+  【MCP 接口（给 Claude Code / Codex 等 AI 助手用的记忆通道）】
+  每个记忆库一个 MCP 地址（记忆库 ID 见控制台）：
+
+    https://hindsight.<你的微服域名>/mcp/<记忆库ID>/
+
+  接 Claude Code：claude mcp add --transport http hindsight https://hindsight.<你的微服域名>/mcp/<记忆库ID>/
+  多库模式用 https://hindsight.<你的微服域名>/mcp/（工具里带 bank_id）。
+
+  - 移动端：管控台为桌面端布局（宽表格与图表），移动端暂不支持，请用桌面端/电脑浏览器打开。
+
+  说明：
+  - 数据保存在 /lzcapp/var 下，升级/重启不会丢失
+  - 控制台默认不设访问口令，打开即用；如需口令保护可在设置中自行配置
+application:
+  subdomain: hindsight
+  # 评审驳回 #20536「MCP 接口没有保留」：Hindsight 的 MCP 端点内置于 API 服务（容器内 8888），
+  # 上游默认挂载在 /mcp（每个记忆库一个端点 /mcp/<bank_id>/），但本包此前只把管控台（9999）暴露出去，
+  # MCP 端点在外网侧不可达。这里把 /mcp 路由到 8888，并把该路径加入 public_path：
+  # MCP 客户端（Claude Code / Codex 等）不会走微服的交互式登录，与官方 advanced-public-api 的
+  # 「应用有自身独立鉴权时可将该地址的强制鉴权关闭」一致；public_path 只关闭账号密码鉴权，
+  # 访问仍需登录微服客户端建立虚拟网络。
+  public_path:
+    - /mcp
+    - /mcp/
+  routes:
+    # routes 是前缀匹配且默认去掉前缀，所以这里用 /mcp/=http://...:8888/mcp/ 把前缀补回去，
+    # 这样 /mcp/<记忆库>/ 原样落到 API 的 MCP 端点（实测 platform 的 upstreams.location 只精确匹配
+    # /mcp 本身，/mcp/<bank>/ 会落到 / 的管控台上，所以 MCP 改用 routes）。
+    - /mcp/=http://hindsight:8888/mcp/
+    - /mcp=http://hindsight:8888/mcp
+  upstreams:
+    - location: /
+      backend: http://hindsight:9999
+      disable_trim_location: true
+      fix_websocket_header: true
+  injects:
+    # 评审反馈「没有找到可以配置 嵌入/重排/LLM 模型的位置」：
+    # Hindsight 的模型是服务端配置（官方走 .env 环境变量），控制台里只有「逐库」的差异项，
+    # 所以在本包把模型配置搬到了平台的「部署参数」页（安装或重新配置时可见），
+    # 并在这里给控制台加一条可关闭的提示，指明入口到底在哪。
+    - id: hindsight-model-config-notice
+      'on': response
+      auth_required: false
+      when:
+        - /*
+      do: |
+        var ct = ctx.headers.get("Content-Type") || "";
+        if (ct.indexOf("text/html") < 0) return;
+        // 注意：Next.js 控制台默认 gzip 压缩响应体。平台在 ctx.body.getText()
+        // 时会把压缩解开、set() 时清理 Content-Encoding，所以这里**不要**因为
+        // 看到 Content-Encoding 就 return（那正是第一版提示条没出现的原因）。
+        var html = ctx.body.getText({ max_bytes: 6291456 });
+        if (!html || html.indexOf("</body>") < 0) return;
+        if (html.indexOf("lzc-model-config-notice") >= 0) return;
+        if (html.indexOf("</body>") < 0) return;
+        var s = "<script id=\"lzc-model-config-notice\">(function(){"
+          + "if(document.getElementById('lzc-model-notice'))return;"
+          + "var d=document.createElement('div');d.id='lzc-model-notice';"
+          + "d.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:340px;padding:12px 14px;border-radius:12px;background:rgba(22,22,30,.94);color:#eee;font:13px/1.65 system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14)';"
+          + "d.innerHTML='<b>模型配置入口</b><br>大模型 / 嵌入模型 / 重排模型在「懒猫微服客户端 → 本应用 → 配置（部署参数）」里设置；单个记忆库的差异项在本页的「配置」里改。';"
+          + "var b=document.createElement('span');b.textContent='✕';"
+          + "b.style.cssText='float:right;cursor:pointer;opacity:.65;margin-left:10px';"
+          + "b.onclick=function(){d.remove()};d.insertBefore(b,d.firstChild);"
+          + "document.body.appendChild(d);})();<\/script>";
+        ctx.body.set(html.replace("</body>", s + "</body>"), { content_type: "text/html; charset=utf-8" });
+    - id: lazycat-file-bridge
+      'on': request
+      auth_required: false
+      when:
+        - /__lazycat_file_bridge/*
+      do:
+        - src: |
+            const bridgePrefix = "/__lazycat_file_bridge";
+            const requestHost = String(ctx.request.host || "")
+              .split(":")[0]
+              .toLowerCase();
+            const firstDot = requestHost.indexOf(".");
+            const method = String(ctx.request.method || "").toUpperCase();
+
+            if (
+              firstDot <= 0 ||
+              !requestHost.endsWith(".heiyu.space") ||
+              !["GET", "HEAD", "PUT"].includes(method)
+            ) {
+              ctx.response.send(
+                ["GET", "HEAD", "PUT"].includes(method) ? 400 : 405,
+                "Invalid LazyCat file bridge request",
+              );
+              return;
+            }
+
+            const boxDomain = requestHost.slice(firstDot + 1);
+            const fileOrigin = "https://file." + boxDomain;
+            const targetPath =
+              "/files/home" + ctx.request.path.slice(bridgePrefix.length);
+
+            ctx.headers.del("Origin");
+            ctx.headers.del("Referer");
+            ctx.proxy.to(fileOrigin, {
+              path: targetPath,
+              query: ctx.request.raw_query,
+              use_target_host: true,
+              timeout_ms: 120000,
+              on_fail: "error",
+            });
+    - id: open-save-chooser
+      'on': browser
+      auth_required: false
+      when:
+        - /*
+      do:
+        - src: >-
+            file:///lzcapp/pkg/content/lazycat-injects/lzc-file-chooser-inject.js
+          params:
+            diskRoot: /_lzc/files/home
+            fileBridgeRoot: /__lazycat_file_bridge
+            fallbackMime: application/octet-stream
+            locale: auto
+            hooks:
+              fileInput: true
+              downloadAnchor: true
+            text:
+              zh-CN:
+                openTitle: 打开
+                saveTitle: 保存
+                cloudTab: 网盘文件
+                localTab: 本地文件
+                openLazyCat: 从懒猫打开
+                saveLazyCat: 保存至懒猫
+                cancel: 取消
+              en-US:
+                openTitle: Open
+                saveTitle: Save
+                cloudTab: Cloud files
+                localTab: Local files
+                openLazyCat: Open from LazyCat
+                saveLazyCat: Save to LazyCat
+                cancel: Cancel
+services:
+  hindsight:
+    image: registry.lazycat.cloud/wans/vectorize-io/hindsight:8ab08b5958e877e0
+    binds:
+      - /lzcapp/var/data:/home/hindsight/.pg0
+    user: '0:0'
+    entrypoint: /bin/sh /lzcapp/pkg/content/entry.sh
+    environment:
+      # ---- 部署参数（平台按用户填写渲染；entry.sh 再翻译成官方 HINDSIGHT_API_* 变量）----
+      - HINDSIGHT_LZC_LLM_PROVIDER={{ index .U "llm_provider" | default "none" }}
+      - HINDSIGHT_LZC_LLM_MODEL={{ index .U "llm_model" | default "" }}
+      - HINDSIGHT_LZC_LLM_API_KEY={{ index .U "llm_api_key" | default "" }}
+      - HINDSIGHT_LZC_LLM_BASE_URL={{ index .U "llm_base_url" | default "" }}
+      - HINDSIGHT_LZC_EMBEDDINGS_PROVIDER={{ index .U "embeddings_provider" | default "local" }}
+      - HINDSIGHT_LZC_EMBEDDINGS_MODEL={{ index .U "embeddings_model" | default "BAAI/bge-small-en-v1.5" }}
+      - HINDSIGHT_LZC_RERANKER_PROVIDER={{ index .U "reranker_provider" | default "local" }}
+      - HINDSIGHT_LZC_RERANKER_MODEL={{ index .U "reranker_model" | default "cross-encoder/ms-marco-MiniLM-L-6-v2" }}
+      - HINDSIGHT_LZC_RERANKER_API_KEY={{ index .U "reranker_api_key" | default "" }}
+      - HINDSIGHT_LZC_RERANKER_BASE_URL={{ index .U "reranker_base_url" | default "" }}
+      - HINDSIGHT_LZC_EXTRA_ENV={{ index .U "extra_env" | default "" }}
+      # ---- 运行时 ----
+      - HINDSIGHT_ENABLE_API=true
+      - HINDSIGHT_ENABLE_CP=true
+      # 控制台「记忆库 → 配置」的逐库参数面板由这个开关放行（官方默认 true，这里显式写出）
+      - HINDSIGHT_API_ENABLE_BANK_CONFIG_API=true
+      - HINDSIGHT_API_HOST=0.0.0.0
+      - HINDSIGHT_API_PORT=8888
+      - HINDSIGHT_CP_HOSTNAME=0.0.0.0
+      - HINDSIGHT_CP_PORT=9999
+      - HINDSIGHT_CP_DATAPLANE_API_URL=http://localhost:8888
+      - HINDSIGHT_API_LOG_LEVEL=info
+      - HINDSIGHT_API_WORKER_ID=hindsight
+      - HOME=/home/hindsight
+      # 内置本地嵌入/重排模型来自镜像缓存，默认离线运行（需要拉新模型时用部署参数的 extra_env 覆盖）
+      - TRANSFORMERS_OFFLINE=1
+      - HF_HUB_OFFLINE=1
+      - PYTHONUNBUFFERED=1
+      - TOKENIZERS_PARALLELISM=false
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request,sys; sys.exit(0 if
+          urllib.request.urlopen('http://127.0.0.1:9999/api/health',timeout=5).status==200
+          else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 1200s
