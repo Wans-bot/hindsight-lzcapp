@@ -1,5 +1,5 @@
 package: cloud.lazycat.app.hindsight
-version: 0.10.2-10
+version: 1.0.0
 name: Hindsight
 description: Agent 记忆系统：让 AI 智能体记住每次对话、自动沉淀长期记忆，支持 25+ 大模型供应商。
 author: vectorize-io
@@ -56,8 +56,7 @@ locales:
   en-US:
     name: Hindsight
     description: >-
-      Agent memory that learns. Persistent memory for AI agents with 25+ LLM
-      providers.
+      Agent memory that learns. Persistent memory for AI agents with 25+ LLM providers.
     usage: |
       Hindsight is an open-source long-term memory system for AI agents
       (Claude Code, Codex, Cursor, ...).

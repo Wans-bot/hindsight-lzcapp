@@ -160,7 +160,8 @@ application:
                 cancel: Cancel
 services:
   hindsight:
-    image: registry.lazycat.cloud/wans/vectorize-io/hindsight:8ab08b5958e877e0
+    # upstream: ghcr.io/vectorize-io/hindsight:1.0.0
+    image: registry.lazycat.cloud/wans/vectorize-io/hindsight:dd2696c6535309af
     binds:
       - /lzcapp/var/data:/home/hindsight/.pg0
     user: '0:0'
@@ -200,9 +201,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          python3 -c "import urllib.request,sys; sys.exit(0 if
-          urllib.request.urlopen('http://127.0.0.1:9999/api/health',timeout=5).status==200
-          else 1)"
+          python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9999/api/health',timeout=5).status==200 else 1)"
       interval: 15s
       timeout: 10s
       retries: 10
